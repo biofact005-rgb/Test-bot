@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 from datetime import datetime
 import json
 from telebot.types import BotCommand
+from flask import Flask
+import threading
+import os
+
 
 
 
@@ -707,26 +711,42 @@ def get_paper(call):
 
 
 
-# ==========================================
-# 🚀 SETTING UP BOT MENU & RUNNING BOT
-# ==========================================
-print("Setting up Bot Commands...")
-
-# Ye list Telegram menu me dikhegi
-bot.set_my_commands([
-    BotCommand("start", "Start the bot & Go to Home"),
-    BotCommand("admin", "👑 Open Admin Panel"),
-    BotCommand("stats", "📊 Check Bot Live Stats"),
-    BotCommand("broadcast", "📢 Send msg to all users"),
-    BotCommand("backup", "💾 Download Database Backup"),
-    BotCommand("recover", "🔄 Restore Database from Backup"),
-    BotCommand("end", "🚫 Block a user (Format: /end UserID)")
-])
-
 
 
 # ==========================================
 # 🚀 RUN BOT
 # ==========================================
-print("VIP Test Paper Bot v3.0 Started...")
-bot.infinity_polling()
+# ==========================================
+# 🌐 DUMMY WEB SERVER (FOR RENDER) & BOT RUN
+# ==========================================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🚀 VIP Test Paper Bot is LIVE and Running 24/7!"
+
+def run_web_server():
+    # Render khud ek PORT environment variable deta hai
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    print("Setting up Bot Commands...")
+    bot.set_my_commands([
+        BotCommand("start", "Start the bot & Go to Home"),
+        BotCommand("admin", "👑 Open Admin Panel"),
+        BotCommand("stats", "📊 Check Bot Live Stats"),
+        BotCommand("broadcast", "📢 Send msg to all users"),
+        BotCommand("backup", "💾 Download Database Backup"),
+        BotCommand("recover", "🔄 Restore Database from Backup"),
+        BotCommand("end", "🚫 Block a user")
+    ])
+
+    # Dummy server ko alag background thread me chalana
+    print("Starting Web Server for Render...")
+    server_thread = threading.Thread(target=run_web_server)
+    server_thread.start()
+
+    # Main thread me apna bot chalega
+    print("VIP Test Paper Bot v3.0 Started...")
+    bot.infinity_polling()
