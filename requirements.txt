@@ -3,3 +3,4 @@ pymongo
 fpdf2
 pypdf
 flask
+python-dotenv
