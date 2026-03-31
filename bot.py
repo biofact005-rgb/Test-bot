@@ -801,33 +801,6 @@ def verify_user_sub(call):
         bot.answer_callback_query(call.id, "❌ Aapne abhi tak dono channels join nahi kiye hain! Pehle join karein.", show_alert=True)
 
 
-
-
-# ==========================================
-# 🎓 STUDENT UI & DOWNLOAD
-# ==========================================
-
-
-
-@bot.message_handler(commands=['start'])
-def student_home(message):
-    user_id = message.from_user.id
-    users_col.update_one({"_id": user_id}, {"$set": {"first_name": message.from_user.first_name}}, upsert=True)
-    
-    user = users_col.find_one({"_id": user_id})
-    if user and user.get("access") == False:
-        return bot.send_message(message.chat.id, "❌ Access Denied.")
-        
-    # 🚨 FORCE SUB CHECK 🚨
-    if not check_subscription(user_id):
-        return send_force_sub_msg(message.chat.id)
-        
-    img, caption, markup = get_folder_ui(user_id, message.from_user.first_name, "root", is_admin=False)
-    bot.send_photo(message.chat.id, photo=img, caption=caption, parse_mode='HTML', reply_markup=markup)
-
-
-
-
 # ==========================================
 # 🎓 STUDENT UI & DOWNLOAD (WITH FORCE SUB)
 # ==========================================
@@ -841,18 +814,14 @@ def student_home(message):
     if user and user.get("access") == False:
         return bot.send_message(message.chat.id, "❌ Access Denied.")
         
-    # 🚨 FORCE SUB CHECK
-    if not check_subscription(user_id):
-        return send_force_sub_msg(message.chat.id)
+    # 🚨 FORCE SUB YAHAN SE HATA DIYA (Free entry) 🚨
         
     img, caption, markup = get_folder_ui(user_id, message.from_user.first_name, "root", is_admin=False)
     bot.send_photo(message.chat.id, photo=img, caption=caption, parse_mode='HTML', reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("vwf_"))
 def student_navigate(call):
-    # 🚨 FORCE SUB CHECK
-    if not check_subscription(call.from_user.id):
-        return bot.answer_callback_query(call.id, "❌ Please join our channels first. Type /start", show_alert=True)
+    # 🚨 FORCE SUB YAHAN SE BHI HATA DIYA 🚨
         
     folder_id = call.data.split("vwf_")[1]
     img, caption, markup = get_folder_ui(call.from_user.id, call.from_user.first_name, folder_id, is_admin=False)
@@ -867,12 +836,18 @@ def student_navigate(call):
             
     bot.answer_callback_query(call.id)
 
+
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("getp_"))
 def get_paper(call):
-    # 🚨 FORCE SUB CHECK
+    # 🚨 ASLI TRAP YAHAN HAI: Sirf PDF click karne par rokega 🚨
     if not check_subscription(call.from_user.id):
-        return bot.answer_callback_query(call.id, "❌ Please join our channels first. Type /start", show_alert=True)
+        # User ko screen par ek chota sa alert dikhega
+        bot.answer_callback_query(call.id, "🛑 Premium Paper! Pehle channels join karein.", show_alert=True)
+        # Aur bot channel join karne wala message bhej dega
+        return send_force_sub_msg(call.message.chat.id)
         
+    # --- Yahan se neeche aapka downloading aur timer wala code same rahega ---
     paper_id = call.data.split("getp_")[1]
     paper = papers_col.find_one({"_id": paper_id})
     
@@ -897,8 +872,6 @@ def get_paper(call):
         sent_msg = bot.send_document(call.message.chat.id, paper['file_id'], caption=premium_caption, parse_mode='HTML')
         bot.answer_callback_query(call.id, "File delivered! Timer started ⏳")
         threading.Thread(target=delete_message_later, args=(call.message.chat.id, sent_msg.message_id)).start()
-
-
 
 
 
