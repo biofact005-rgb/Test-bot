@@ -222,17 +222,18 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
     # 🎨 THEME LOGIC
     theme_color = "primary" if folder_id == "root" else "success"
     
-    # ==========================================
-    # 👤 1. GLOBAL INFO BLOCK (Ab har page par dikhega)
+    
+        # ==========================================
+    # 👤 1. GLOBAL INFO BLOCK (Bina blockquote tag ke)
     # ==========================================
     user_count = users_col.count_documents({})
     timer = get_neet_countdown()
     
     global_info = (
-        f"<blockquote>👤 <b>Sᴛᴜᴅᴇɴᴛ:</b> {first_name}\n"
+        f"👤 <b>Sᴛᴜᴅᴇɴᴛ:</b> {first_name}\n"
         f"🆔 <b>Usᴇʀ ID:</b> <code>{user_id}</code>\n"
         f"👥 <b>Lɪᴠᴇ Asᴘɪʀᴀɴᴛs:</b> <code>{user_count}</code>\n"
-        f"⏳ <b>Nᴇᴇᴛ Cᴏᴜɴᴛᴅᴏᴡɴ:</b> <code>{timer}</code></blockquote>"
+        f"⏳ <b>Nᴇᴇᴛ Cᴏᴜɴᴛᴅᴏᴡɴ:</b> <code>{timer}</code>"
     )
     
     # ==========================================
@@ -241,7 +242,6 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
     path_names = []
     curr = folder_id
     
-    # Loop chalakar Home (root) tak ka rasta dhoondhna
     while curr and curr != "root":
         f = folders_col.find_one({"_id": curr})
         if f:
@@ -250,25 +250,30 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
         else:
             break
             
-    # List ko reverse karna taaki Home se start ho
     path_names.reverse()
     
     if folder_id == "root":
-        path_block = "<blockquote>📂 <b>Pᴀᴛʜ:</b> Hᴏᴍᴇ</blockquote>"
+        path_text = "📂 <b>Pᴀᴛʜ:</b> Hᴏᴍᴇ"
     else:
-        path_block = "<blockquote>📂 <b>Hᴏᴍᴇ</b>\n"
+        path_text = "📂 <b>Hᴏᴍᴇ</b>\n"
         space = ""
         for name in path_names:
-            path_block += f"{space}  ╰── <b>{name}</b>\n"
-            space += "      " # Har step par thodi space badh jayegi
-        path_block += "</blockquote>"
+            path_text += f"{space}  ╰── <b>{name}</b>\n"
+            space += "      "
+        path_text = path_text.rstrip() # Last wali extra empty line hatane ke liye
         
     # ==========================================
-    # 📝 FINAL CAPTION BANA NA
+    # 📝 FINAL CAPTION BANA NA (SINGLE BOX FIX)
     # ==========================================
-    # Teeno cheezon (Title, Global Info, Path) ko ek sath jod diya
-    caption = f"{title}\n\n{global_info}\n\n{path_block}\n\n{bottom_text}"
-    
+    # Ab dono cheezon ko ek hi <blockquote> tag ke andar daal diya hai
+    caption = (
+        f"{title}\n\n"
+        f"<blockquote>{global_info}\n"
+        f"━━━━━━━━━━━━━━\n" # Ye ek premium divider line hai
+        f"{path_text}</blockquote>\n\n"
+        f"{bottom_text}"
+    )
+
     
     # ==========================================
     # 🔘 BUTTONS RENDER LOGIC
