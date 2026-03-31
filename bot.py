@@ -205,6 +205,7 @@ def get_neet_countdown():
     hours = diff.seconds // 3600
     return f"{days} Days, {hours} Hours"
 
+
 def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
     current_folder = folders_col.find_one({"_id": folder_id})
     if not current_folder: return None, None, None
@@ -212,52 +213,81 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
     subfolders = list(folders_col.find({"parent_id": folder_id}))
     papers = list(papers_col.find({"folder_id": folder_id}))
     
-    title = current_folder.get("title", "🏆 <b>PREMIUM TEST SERIES PORTAL</b> 🏆")
-    bottom_text = current_folder.get("bottom_text", "⚡ <i>Neeche se apna Test Paper select karein:</i>")
+    # 📌 UI Titles (Small Caps font pehle se add kar diya hai)
+    title = current_folder.get("title", "🏆 <b>Pʀᴇᴍɪᴜᴍ Tᴇsᴛ Sᴇʀɪᴇs Pᴏʀᴛᴀʟ</b> 🏆")
+    bottom_text = current_folder.get("bottom_text", "⚡ <i>Nᴇᴇᴄʜᴇ sᴇ ᴀᴘɴᴀ Tᴇsᴛ Pᴀᴘᴇʀ sᴇʟᴇᴄᴛ ᴋᴀʀᴇɪɴ:</i>")
     default_img = IMAGES['home'] if folder_id == "root" else IMAGES['folder']
     img = current_folder.get("photo", default_img)
     
-    # 🎨 THEME LOGIC: Root (Home) = Blue (primary), Baaki sab = Green (success)
+    # 🎨 THEME LOGIC
     theme_color = "primary" if folder_id == "root" else "success"
     
-    if folder_id == "root":
-        user_count = users_col.count_documents({})
-        timer = get_neet_countdown()
-        caption = (
-            f"{title}\n\n"
-            f"<blockquote>👤 <b>Student:</b> {first_name}\n"
-            f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
-            f"👥 <b>Live Aspirants:</b> {user_count}\n"
-            f"⏳ <b>NEET Countdown:</b> {timer}</blockquote>\n\n"
-            f"{bottom_text}"
-        )
-    else:
-        # Baaki folders ka normal caption
-        caption = (
-            f"{title}\n\n"
-            f"<blockquote>📂 <b>Folder:</b> {current_folder['name']}</blockquote>\n\n"
-            f"{bottom_text}"
-        )
+    # ==========================================
+    # 👤 1. GLOBAL INFO BLOCK (Ab har page par dikhega)
+    # ==========================================
+    user_count = users_col.count_documents({})
+    timer = get_neet_countdown()
     
+    global_info = (
+        f"<blockquote>👤 <b>Sᴛᴜᴅᴇɴᴛ:</b> {first_name}\n"
+        f"🆔 <b>Usᴇʀ ID:</b> <code>{user_id}</code>\n"
+        f"👥 <b>Lɪᴠᴇ Asᴘɪʀᴀɴᴛs:</b> <code>{user_count}</code>\n"
+        f"⏳ <b>Nᴇᴇᴛ Cᴏᴜɴᴛᴅᴏᴡɴ:</b> <code>{timer}</code></blockquote>"
+    )
+    
+    # ==========================================
+    # 📂 2. PATH GENERATOR (Tree/Branch Format)
+    # ==========================================
+    path_names = []
+    curr = folder_id
+    
+    # Loop chalakar Home (root) tak ka rasta dhoondhna
+    while curr and curr != "root":
+        f = folders_col.find_one({"_id": curr})
+        if f:
+            path_names.append(f['name'])
+            curr = f.get('parent_id')
+        else:
+            break
+            
+    # List ko reverse karna taaki Home se start ho
+    path_names.reverse()
+    
+    if folder_id == "root":
+        path_block = "<blockquote>📂 <b>Pᴀᴛʜ:</b> Hᴏᴍᴇ</blockquote>"
+    else:
+        path_block = "<blockquote>📂 <b>Hᴏᴍᴇ</b>\n"
+        space = ""
+        for name in path_names:
+            path_block += f"{space}  ╰── <b>{name}</b>\n"
+            space += "      " # Har step par thodi space badh jayegi
+        path_block += "</blockquote>"
+        
+    # ==========================================
+    # 📝 FINAL CAPTION BANA NA
+    # ==========================================
+    # Teeno cheezon (Title, Global Info, Path) ko ek sath jod diya
+    caption = f"{title}\n\n{global_info}\n\n{path_block}\n\n{bottom_text}"
+    
+    
+    # ==========================================
+    # 🔘 BUTTONS RENDER LOGIC
+    # ==========================================
     markup = InlineKeyboardMarkup()
     
     if is_admin:
-        # Admin buttons ko bhi theme color milega
         markup.row(
             InlineKeyboardButton("➕ Add Folder", callback_data=f"addf_{folder_id}", style=theme_color), 
             InlineKeyboardButton("📤 Upload Paper", callback_data=f"addp_{folder_id}", style=theme_color)
         )
         markup.row(InlineKeyboardButton("🎨 Edit Page UI", callback_data=f"editui_{folder_id}", style=theme_color))
         if folder_id != "root":
-            # Delete Folder khatarnak hai, isliye ise Red hi rakha hai
             markup.row(InlineKeyboardButton("🗑️ Delete This Folder", callback_data=f"delf_{folder_id}", style="danger"))
             
-    # 📁 Folders render honge theme color ke hisaab se
     folder_btns = [InlineKeyboardButton(f"📁 {f['name']}", callback_data=f"{'adf_' if is_admin else 'vwf_'}{f['_id']}", style=theme_color) for f in subfolders]
     for btn in folder_btns:
         markup.row(btn)
         
-    # 📄 Papers render honge theme color ke hisaab se
     for p in papers:
         if is_admin: 
             markup.row(
@@ -268,11 +298,9 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
             markup.row(InlineKeyboardButton(f"📄 {p['name']}", callback_data=f"getp_{p['_id']}", style=theme_color))
             
     if folder_id == "root":
-        # Home page par Help button Blue hoga
         markup.row(InlineKeyboardButton("ℹ️ Help & Bot Rules", callback_data="help_page", style=theme_color))
     elif folder_id != "root":
         back_id = current_folder.get('parent_id', 'root')
-        # 🔴 BACK BUTTON HAMESHA RED HOGA
         markup.row(InlineKeyboardButton("🔙 Back", callback_data=f"{'adf_' if is_admin else 'vwf_'}{back_id}", style="danger"))
         
     return img, caption, markup
