@@ -217,7 +217,9 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
     default_img = IMAGES['home'] if folder_id == "root" else IMAGES['folder']
     img = current_folder.get("photo", default_img)
     
-    # 🚨 FIX: Root (Home) folder par Live Stats aur Timer dikhega
+    # 🎨 THEME LOGIC: Root (Home) = Blue (primary), Baaki sab = Green (success)
+    theme_color = "primary" if folder_id == "root" else "success"
+    
     if folder_id == "root":
         user_count = users_col.count_documents({})
         timer = get_neet_countdown()
@@ -240,37 +242,41 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
     markup = InlineKeyboardMarkup()
     
     if is_admin:
-        markup.row(InlineKeyboardButton("➕ Add Folder", callback_data=f"addf_{folder_id}"), InlineKeyboardButton("📤 Upload Paper", callback_data=f"addp_{folder_id}"))
-        markup.row(InlineKeyboardButton("🎨 Edit Page UI", callback_data=f"editui_{folder_id}"))
+        # Admin buttons ko bhi theme color milega
+        markup.row(
+            InlineKeyboardButton("➕ Add Folder", callback_data=f"addf_{folder_id}", style=theme_color), 
+            InlineKeyboardButton("📤 Upload Paper", callback_data=f"addp_{folder_id}", style=theme_color)
+        )
+        markup.row(InlineKeyboardButton("🎨 Edit Page UI", callback_data=f"editui_{folder_id}", style=theme_color))
         if folder_id != "root":
-            markup.row(InlineKeyboardButton("🗑️ Delete This Folder", callback_data=f"delf_{folder_id}"))
+            # Delete Folder khatarnak hai, isliye ise Red hi rakha hai
+            markup.row(InlineKeyboardButton("🗑️ Delete This Folder", callback_data=f"delf_{folder_id}", style="danger"))
             
-    folder_btns = [InlineKeyboardButton(f"📁 {f['name']}", callback_data=f"{'adf_' if is_admin else 'vwf_'}{f['_id']}") for f in subfolders]
-    # 🚨 FIX: Har button ko alag row me daal diya
+    # 📁 Folders render honge theme color ke hisaab se
+    folder_btns = [InlineKeyboardButton(f"📁 {f['name']}", callback_data=f"{'adf_' if is_admin else 'vwf_'}{f['_id']}", style=theme_color) for f in subfolders]
     for btn in folder_btns:
         markup.row(btn)
-
-
         
+    # 📄 Papers render honge theme color ke hisaab se
     for p in papers:
-        if is_admin: markup.row(InlineKeyboardButton(f"📄 {p['name']}", callback_data=f"delp_{p['_id']}"), InlineKeyboardButton("❌", callback_data=f"delp_{p['_id']}")) 
-        else: markup.row(InlineKeyboardButton(f"📄 {p['name']}", callback_data=f"getp_{p['_id']}"))
+        if is_admin: 
+            markup.row(
+                InlineKeyboardButton(f"📄 {p['name']}", callback_data=f"delp_{p['_id']}", style=theme_color), 
+                InlineKeyboardButton("❌", callback_data=f"delp_{p['_id']}", style="danger")
+            ) 
+        else: 
+            markup.row(InlineKeyboardButton(f"📄 {p['name']}", callback_data=f"getp_{p['_id']}", style=theme_color))
             
-    # ... (Upar wala code same rahega jahan papers aur folders render hote hain)
-    
-    # 🚨 FIX: Root (Home) folder par Help button, aur baaki par Back button
     if folder_id == "root":
-        markup.row(InlineKeyboardButton("ℹ️ Help & Bot Rules", callback_data="help_page"))
+        # Home page par Help button Blue hoga
+        markup.row(InlineKeyboardButton("ℹ️ Help & Bot Rules", callback_data="help_page", style=theme_color))
     elif folder_id != "root":
         back_id = current_folder.get('parent_id', 'root')
-        markup.row(InlineKeyboardButton("🔙 Back", callback_data=f"{'adf_' if is_admin else 'vwf_'}{back_id}"))
+        # 🔴 BACK BUTTON HAMESHA RED HOGA
+        markup.row(InlineKeyboardButton("🔙 Back", callback_data=f"{'adf_' if is_admin else 'vwf_'}{back_id}", style="danger"))
         
     return img, caption, markup
 
-
-
-        
-    return img, caption, markup
 
 
 
