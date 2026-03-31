@@ -88,7 +88,12 @@ client = MongoClient(MONGO_URI)
 db = client['test_paper_bot_vip']
 users_col = db['users']
 folders_col = db['folders'] 
-papers_col = db['papers']   
+papers_col = db['papers'] 
+# --- Nayi Collections Quiz ke liye ---
+questions_col = db['questions']
+scores_col = db['scores']
+active_polls = db['active_polls']
+
 
 # Root folder initialize karna
 if not folders_col.find_one({"_id": "root"}):
@@ -424,6 +429,52 @@ def process_recovery(message):
     if data.get("papers"): papers_col.insert_many(data["papers"])
     
     bot.send_message(message.chat.id, "✅ <b>Database Successfully Recovered!</b> All folders and papers are back.", parse_mode='HTML')
+
+
+# ==========================================
+# 📝 QUIZ QUESTION UPLOADER (ADMIN)
+# ==========================================
+@bot.message_handler(commands=['addquiz'])
+def add_quiz_file(message):
+    if message.from_user.id != ADMIN_ID: return
+    msg = bot.reply_to(message, "📤 <b>Question Bank Upload:</b>\n\nEk <code>.txt</code> file bhejo jisme questions ho. Har question ke baad <code>---</code> hona zaroori hai.", parse_mode='HTML')
+    bot.register_next_step_handler(msg, process_quiz_file)
+
+def process_quiz_file(message):
+    if not message.document or not message.document.file_name.endswith('.txt'):
+        return bot.reply_to(message, "❌ Error: Sirf .txt file allow hai!")
+        
+    bot.reply_to(message, "⏳ Questions Database me save ho rahe hain...")
+    
+    file_info = bot.get_file(message.document.file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+    
+    # Text file ko padhna
+    content = downloaded_file.decode('utf-8')
+    blocks = content.split('---')
+    
+    added_count = 0
+    for block in blocks:
+        # Har line ko alag karna aur khaali lines hatana
+        lines = [line.strip() for line in block.strip().split('\n') if line.strip()]
+        
+        # Format check: 1 Q + 4 Options + 1 Answer = 6 lines
+        if len(lines) >= 6:
+            question_text = lines[0]
+            options = lines[1:5]
+            # Telegram polls me options 0, 1, 2, 3 index par hote hain
+            correct_option_id = int(lines[5]) - 1 
+            
+            # MongoDB me save karna
+            questions_col.insert_one({
+                "question": question_text,
+                "options": options,
+                "correct_option_id": correct_option_id,
+                "status": "pending" # pending matlab abhi bhejha nahi gaya hai
+            })
+            added_count += 1
+            
+    bot.send_message(message.chat.id, f"✅ <b>Success!</b> {added_count} naye questions database me add ho gaye hain.", parse_mode='HTML')
 
 
 
