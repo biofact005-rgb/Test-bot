@@ -650,6 +650,106 @@ def admin_navigate(call):
 
 
 
+import time
+import schedule # Agar error aaye toh requirements.txt me 'schedule' add kar dena
+
+# ==========================================
+# 🏆 QUIZ ENGINE & LEADERBOARD SYSTEM
+# ==========================================
+
+# 1. Answer Check & Scoring (+4, -1)
+@bot.poll_answer_handler()
+def handle_poll_answer(poll_answer):
+    user_id = poll_answer.user.id
+    poll_id = poll_answer.poll_id
+    
+    # Check karna ki ye hamara active poll hai ya nahi
+    active_q = active_polls.find_one({"poll_id": poll_id})
+    if not active_q: return
+    
+    selected_option = poll_answer.option_ids[0]
+    correct_option = active_q['correct_option_id']
+    
+    # Points calculate karna
+    points = 4 if selected_option == correct_option else -1
+    
+    # Database me score update karna (Daily Score)
+    scores_col.update_one(
+        {"_id": user_id},
+        {"$inc": {"score": points}, "$set": {"name": poll_answer.user.first_name}},
+        upsert=True
+    )
+
+# 2. Leaderboard Generator (Top 20)
+def send_leaderboard():
+    top_users = list(scores_col.find().sort("score", -1).limit(20))
+    if not top_users: return
+    
+    leaderboard_text = "🏆 <b>TODAY'S TOP 20 CHAMPIONS</b> 🏆\n\n"
+    for i, user in enumerate(top_users, 1):
+        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🔹"
+        leaderboard_text += f"{medal} {i}. <b>{user.get('name', 'User')}</b> — <code>{user['score']} pts</code>\n"
+    
+    leaderboard_text += "\n<i>Scores have been reset for tomorrow! Keep practicing.</i>"
+    
+    # Sabhi users ko broadcast karna (Ya aap apne Main Channel me bhi bhej sakte ho)
+    all_users = users_col.find({})
+    for u in all_users:
+        try: bot.send_message(u['_id'], leaderboard_text, parse_mode='HTML')
+        except: pass
+    
+    # Scores Reset karna agle din ke liye
+    scores_col.delete_many({})
+
+# 3. 30-Minute Quiz Loop
+def quiz_loop():
+    while True:
+        try:
+            # 1. Purane polls delete karna (Cleanup)
+            old_polls = list(active_polls.find({}))
+            for p in old_polls:
+                try: bot.delete_message(p['chat_id'], p['msg_id'])
+                except: pass
+            active_polls.delete_many({})
+            
+            # 2. Random naya question uthana
+            q = questions_col.aggregate([{"$sample": {"size": 1}}]).next()
+            
+            if q:
+                all_users = users_col.find({})
+                for user in all_users:
+                    try:
+                        poll_msg = bot.send_poll(
+                            chat_id=user['_id'],
+                            question=f"⏱ 30 MIN CHALLENGE:\n\n{q['question']}",
+                            options=q['options'],
+                            is_anonymous=False, # Taaki hume pata chale kisne answer diya
+                            type='quiz',
+                            correct_option_id=q['correct_option_id'],
+                            explanation="NEET Pattern: +4 for Correct, -1 for Wrong."
+                        )
+                        # Poll ID track karna scoring ke liye
+                        active_polls.insert_one({
+                            "poll_id": poll_msg.poll.id,
+                            "correct_option_id": q['correct_option_id'],
+                            "chat_id": user['_id'],
+                            "msg_id": poll_msg.message_id
+                        })
+                    except: continue
+                    
+            # 3. Raat ke 12 baje check karna leaderboard ke liye
+            now = datetime.now()
+            if now.hour == 0 and now.minute <= 30: # 12:00 AM window
+                send_leaderboard()
+                
+        except Exception as e:
+            print(f"Quiz Loop Error: {e}")
+            
+        time.sleep(1800) # 1800 seconds = 30 minutes
+
+
+
+
 # ==========================================
 # ℹ️ HELP PAGE & SUPPORT
 # ==========================================
