@@ -50,7 +50,7 @@ bot = telebot.TeleBot(TOKEN)
 # 📢 FORCE SUBSCRIBE CHANNELS
 # ==========================================
 # Yahan dono channels ke username daalne hain
-REQUIRED_CHANNELS = ["@testbotupdate", "@errorkid_05"]
+REQUIRED_CHANNELS = ["@testbotupdate", "@errorkids"]
 
 def check_subscription(user_id):
     if user_id == ADMIN_ID: return True # Admin ko check nahi karna
