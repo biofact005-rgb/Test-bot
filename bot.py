@@ -67,7 +67,7 @@ def check_subscription(user_id):
 def send_force_sub_msg(chat_id):
     markup = InlineKeyboardMarkup()
     markup.row(InlineKeyboardButton("📢 Join Channel 1", url="https://t.me/testbotupdate"))
-    markup.row(InlineKeyboardButton("📢 Join Channel 2", url="https://t.me/errorkid_05"))
+    markup.row(InlineKeyboardButton("📢 Join Channel 2", url="https://t.me/errorkids"))
     markup.row(InlineKeyboardButton("✅ I Have Joined", callback_data="check_sub"))
     
     msg = (
