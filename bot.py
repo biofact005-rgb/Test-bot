@@ -13,9 +13,6 @@ from flask import Flask
 import threading
 import os
 
-
-
-
 # --- TERMUX DNS FIX ---
 import dns.resolver
 dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
@@ -42,8 +39,6 @@ IMAGES = {
 }
 
 bot = telebot.TeleBot(TOKEN)
-
-
 
 
 # ==========================================
@@ -79,8 +74,6 @@ def send_force_sub_msg(chat_id):
     bot.send_message(chat_id, msg, parse_mode='HTML', reply_markup=markup)
 
 
-
-
 # ==========================================
 # 💾 MONGODB SETUP
 # ==========================================
@@ -93,6 +86,9 @@ papers_col = db['papers']
 questions_col = db['questions']
 scores_col = db['scores']
 active_polls = db['active_polls']
+
+# 📌 NAYA: Bulk Upload Track Karne ke liye 
+UPLOAD_STATE = {}
 
 
 # Root folder initialize karna
@@ -157,8 +153,6 @@ def create_watermark(width, height):
     pdf.output("watermark_temp.pdf")
 
 
-
-
 def add_watermark(input_pdf, output_pdf):
     reader = PdfReader(input_pdf)
     writer = PdfWriter()
@@ -189,13 +183,9 @@ def add_watermark(input_pdf, output_pdf):
         os.remove("watermark_temp.pdf")
 
 
-
-
-
 # ==========================================
 # 🖼️ PREMIUM DYNAMIC UI GENERATOR
 # ==========================================
-
 
 def get_neet_countdown():
     # Target: 3 May 2026, 14:30 (2:30 PM)
@@ -294,9 +284,18 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
         if folder_id != "root":
             markup.row(InlineKeyboardButton("🗑️ Delete This Folder", callback_data=f"delf_{folder_id}", style="danger"))
             
-    folder_btns = [InlineKeyboardButton(f"📁 {f['name']}", callback_data=f"{'adf_' if is_admin else 'vwf_'}{f['_id']}", style=theme_color) for f in subfolders]
-    for btn in folder_btns:
-        markup.row(btn)
+    # 📌 UPDATED: Folder Render Logic for 1-Click Download
+    for f in subfolders:
+        if is_admin:
+            markup.row(InlineKeyboardButton(f"📁 {f['name']}", callback_data=f"adf_{f['_id']}", style=theme_color))
+        else:
+            paper_count = papers_col.count_documents({"folder_id": f["_id"]})
+            sub_count = folders_col.count_documents({"parent_id": f["_id"]})
+            # Agar folder me papers hain aur subfolders nahi hain, toh button direct saari files de dega (getall_)
+            if paper_count > 0 and sub_count == 0:
+                markup.row(InlineKeyboardButton(f"📁 {f['name']} (Click to Get All)", callback_data=f"getall_{f['_id']}", style=theme_color))
+            else:
+                markup.row(InlineKeyboardButton(f"📁 {f['name']}", callback_data=f"vwf_{f['_id']}", style=theme_color))
         
     for p in papers:
         if is_admin: 
@@ -307,6 +306,10 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
         else: 
             markup.row(InlineKeyboardButton(f"📄 {p['name']}", callback_data=f"getp_{p['_id']}", style=theme_color))
             
+    # Ek "Download All" button folder ke andar bhi de diya
+    if not is_admin and papers:
+        markup.row(InlineKeyboardButton(f"📥 Download All {len(papers)} Papers Now", callback_data=f"getall_{folder_id}", style="success"))
+            
     if folder_id == "root":
         markup.row(InlineKeyboardButton("ℹ️ Help & Bot Rules", callback_data="help_page", style=theme_color))
     elif folder_id != "root":
@@ -314,9 +317,6 @@ def get_folder_ui(user_id, first_name, folder_id="root", is_admin=False):
         markup.row(InlineKeyboardButton("🔙 Back", callback_data=f"{'adf_' if is_admin else 'vwf_'}{back_id}", style="danger"))
         
     return img, caption, markup
-
-
-
 
 
 # ==========================================
@@ -336,7 +336,6 @@ def reset_ui(message):
     folders_col.update_many({}, {"$unset": {"title": "", "bottom_text": "", "photo": ""}})
     
     bot.reply_to(message, "🛠️ <b>Emergency Fix Applied!</b>\nSabhi folders ka UI default par set ho gaya hai. Ab koi crash nahi hoga.", parse_mode='HTML')
-
 
 
 @bot.message_handler(commands=['end'])
@@ -477,7 +476,6 @@ def process_quiz_file(message):
     bot.send_message(message.chat.id, f"✅ <b>Success!</b> {added_count} naye questions database me add ho gaye hain.", parse_mode='HTML')
 
 
-
 # --- FOLDER & PAPER UPLOAD HANDLERS ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("addf_") or call.data.startswith("addp_"))
 def admin_add_actions(call):
@@ -486,8 +484,16 @@ def admin_add_actions(call):
         msg = bot.send_message(call.message.chat.id, "✏️ <b>Enter Folder Name (e.g., Major Tests):</b>", parse_mode='HTML')
         bot.register_next_step_handler(msg, process_new_folder, folder_id)
     elif action == "addp":
-        msg = bot.send_message(call.message.chat.id, "📤 <b>Send the Test Paper PDF now:</b>", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_new_paper, folder_id)
+        # 📌 BULK UPLOAD MODE START
+        UPLOAD_STATE[call.from_user.id] = folder_id
+        msg = (
+            "📤 <b>BULK UPLOAD MODE ON!</b>\n\n"
+            "Aap is folder mein ek saath <b>jitni chahe PDF files</b> bhej sakte hain (Album banakar ya ek-ek karke).\n"
+            "Sab auto-watermark hoke save ho jayengi.\n\n"
+            "✅ <i>Jab aap saari files bhej dein, tab </i><code>/done</code><i> type karein.</i>"
+        )
+        bot.send_message(call.message.chat.id, msg, parse_mode='HTML')
+        bot.answer_callback_query(call.id)
 
 def process_new_folder(message, parent_id):
     try: bot.delete_message(message.chat.id, message.message_id)
@@ -499,57 +505,62 @@ def process_new_folder(message, parent_id):
     img, caption, markup = get_folder_ui(message.from_user.id, "Admin", parent_id, is_admin=True)
     bot.send_photo(message.chat.id, photo=img, caption=caption, parse_mode='HTML', reply_markup=markup)
 
+# 📌 BULK UPLOAD DOCUMENT HANDLER
+@bot.message_handler(content_types=['document'])
+def handle_bulk_documents(message):
+    user_id = message.from_user.id
+    if user_id in UPLOAD_STATE and user_id == ADMIN_ID:
+        folder_id = UPLOAD_STATE[user_id]
+        if message.document.mime_type == 'application/pdf':
+            # 🚨 FIX 1: Size check (Telegram limit is 20MB)
+            if message.document.file_size > 20 * 1024 * 1024:
+                return bot.reply_to(message, "❌ <b>File 20MB se badi hai!</b> Telegram API isse download nahi kar sakti.", parse_mode='HTML')
+                
+            loading_msg = bot.reply_to(message, "⏳ <b>Adding Watermark to PDF...</b>", parse_mode='HTML')
+            file_info = bot.get_file(message.document.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            
+            input_pdf = f"temp_{message.document.file_id}.pdf"
+            output_pdf = f"watermarked_{message.document.file_id}.pdf"
+            
+            with open(input_pdf, 'wb') as new_file:
+                new_file.write(downloaded_file)
+                
+            name = message.caption if message.caption else message.document.file_name
+            paper_id = gen_id("p")
+            
+            # 🚨 FIX 2: Safety Shield (Try-Except)
+            try:
+                add_watermark(input_pdf, output_pdf)
+                file_to_send = output_pdf 
+            except Exception as e:
+                bot.send_message(message.chat.id, f"⚠️ <b>Warning:</b> Ye PDF corrupt ya locked hai. Bina watermark ke upload kar raha hoon...", parse_mode='HTML')
+                file_to_send = input_pdf 
+            
+            # Uploading to Database Group
+            with open(file_to_send, 'rb') as f:
+                sent_msg = bot.send_document(DB_GROUP_ID, document=(name, f), caption=f"Added: {name}")
+                new_file_id = sent_msg.document.file_id
+                
+            papers_col.insert_one({"_id": paper_id, "name": name, "file_id": new_file_id, "folder_id": folder_id})
+            
+            # Temp files delete karna
+            if os.path.exists(input_pdf): os.remove(input_pdf)
+            if os.path.exists(output_pdf): os.remove(output_pdf)
+            
+            bot.edit_message_text(f"✅ <b>Saved:</b> {name}\n<i>(Send more or type /done)</i>", chat_id=message.chat.id, message_id=loading_msg.message_id, parse_mode='HTML')
+        else:
+            bot.reply_to(message, "❌ Please send a valid PDF file only.")
 
-def process_new_paper(message, folder_id):
-    try: bot.delete_message(message.chat.id, message.message_id)
-    except: pass
-    
-    if message.document and message.document.mime_type == 'application/pdf':
-        
-        # 🚨 FIX 1: Size check (Telegram limit is 20MB)
-        if message.document.file_size > 20 * 1024 * 1024:
-            return bot.send_message(message.chat.id, "❌ <b>File 20MB se badi hai!</b> Telegram API isse download nahi kar sakti.", parse_mode='HTML')
-            
-        loading_msg = bot.send_message(message.chat.id, "⏳ <b>Adding Watermark to PDF...</b>", parse_mode='HTML')
-        file_info = bot.get_file(message.document.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        
-        input_pdf = f"temp_{message.document.file_id}.pdf"
-        output_pdf = f"watermarked_{message.document.file_id}.pdf"
-        
-        with open(input_pdf, 'wb') as new_file:
-            new_file.write(downloaded_file)
-            
-        name = message.caption if message.caption else message.document.file_name
-        paper_id = gen_id("p")
-        
-        # 🚨 FIX 2: Safety Shield (Try-Except)
-        try:
-            add_watermark(input_pdf, output_pdf)
-            file_to_send = output_pdf # Watermark lag gaya toh nayi file bhejenge
-        except Exception as e:
-            # Agar PDF corrupt ya locked nikli
-            bot.send_message(message.chat.id, f"⚠️ <b>Warning:</b> Ye PDF corrupt ya locked hai. Watermark fail ho gaya.\nBina watermark ke upload kar raha hoon...", parse_mode='HTML')
-            file_to_send = input_pdf # Fail hone par original file bhejenge
-        
-        # Uploading to Database Group
-        with open(file_to_send, 'rb') as f:
-            sent_msg = bot.send_document(DB_GROUP_ID, document=(name, f), caption=f"Added: {name}")
-            new_file_id = sent_msg.document.file_id
-            
-        papers_col.insert_one({"_id": paper_id, "name": name, "file_id": new_file_id, "folder_id": folder_id})
-        
-        # Temp files delete karna
-        if os.path.exists(input_pdf): os.remove(input_pdf)
-        if os.path.exists(output_pdf): os.remove(output_pdf)
-        
-        bot.delete_message(message.chat.id, loading_msg.message_id)
-        
+@bot.message_handler(commands=['done'])
+def finish_upload_session(message):
+    user_id = message.from_user.id
+    if user_id in UPLOAD_STATE and user_id == ADMIN_ID:
+        folder_id = UPLOAD_STATE.pop(user_id)
+        bot.send_message(message.chat.id, "✅ <b>Upload Session Finished!</b>", parse_mode='HTML')
         # UI Refresh
-        img, caption, markup = get_folder_ui(message.from_user.id, "Admin", folder_id, is_admin=True)
+        img, caption, markup = get_folder_ui(user_id, "Admin", folder_id, is_admin=True)
         bot.send_photo(message.chat.id, photo=img, caption=caption, parse_mode='HTML', reply_markup=markup)
-    else:
-        bot.send_message(message.chat.id, "❌ Please send a valid PDF file only.")
 
 
 # --- CMS (EDIT UI) HANDLERS ---
@@ -873,7 +884,40 @@ def get_paper(call):
         bot.answer_callback_query(call.id, "File delivered! Timer started ⏳")
         threading.Thread(target=delete_message_later, args=(call.message.chat.id, sent_msg.message_id)).start()
 
-
+# 📌 BULK DOWNLOAD HANDLER
+@bot.callback_query_handler(func=lambda call: call.data.startswith("getall_"))
+def bulk_download(call):
+    if not check_subscription(call.from_user.id):
+        bot.answer_callback_query(call.id, "🛑 Premium Papers! Pehle channels join karein.", show_alert=True)
+        return send_force_sub_msg(call.message.chat.id)
+        
+    folder_id = call.data.split("getall_")[1]
+    papers = list(papers_col.find({"folder_id": folder_id}))
+    
+    if not papers:
+        return bot.answer_callback_query(call.id, "❌ Is test mein abhi koi files nahi hain!", show_alert=True)
+        
+    bot.answer_callback_query(call.id, f"📥 Preparing {len(papers)} files... ⏳")
+    
+    loading_msg = bot.send_message(call.message.chat.id, "📥 <b>Bypassing servers & Extracting Files...</b>\n<code>[⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛] 100%</code>", parse_mode='HTML')
+    time.sleep(1)
+    bot.delete_message(call.message.chat.id, loading_msg.message_id)
+    
+    premium_caption = (
+        f"<blockquote>📄 <b>Your Test Papers!</b></blockquote>\n\n"
+        f"👤 <b>Uploaded by:</b> <a href='https://t.me/errorkidk'>ERROR</a>\n\n"
+        f"⚠️ <i>Note: This file will auto-delete in 10 mins. Please save it.</i>"
+    )
+    
+    for paper in papers:
+        try:
+            sent_msg = bot.send_document(call.message.chat.id, paper['file_id'], caption=premium_caption, parse_mode='HTML')
+            threading.Thread(target=delete_message_later, args=(call.message.chat.id, sent_msg.message_id)).start()
+            time.sleep(0.3)
+        except Exception as e:
+            print(f"Error in Bulk Download: {e}")
+            
+    bot.send_message(call.message.chat.id, f"✅ <b>Success!</b> {len(papers)} files bhej di gayi hain.\n⏳ <i>(10 minute me auto-delete ho jayengi)</i>", parse_mode='HTML')
 
 
 # ==========================================
